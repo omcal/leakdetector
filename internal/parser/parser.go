@@ -555,16 +555,18 @@ func (p *Parser) parseDeallocation() *Deallocation {
 
 	// Get the variable being deleted
 	varName := ""
-	if p.check(TokenIdent) {
-		if p.current().Value == "this" {
-			p.advance()
-			p.matchValue("->")
+
+	// Check for this-> prefix (this is a KEYWORD, not ident)
+	if p.checkKeyword("this") {
+		p.advance() // skip 'this'
+		if p.checkValue("->") {
+			p.advance() // skip '->'
 			if p.check(TokenIdent) {
 				varName = p.current().Value
 			}
-		} else {
-			varName = p.current().Value
 		}
+	} else if p.check(TokenIdent) {
+		varName = p.current().Value
 	}
 
 	if varName == "" {

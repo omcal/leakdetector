@@ -1,6 +1,7 @@
 package analyzer
 
 import (
+	"fmt"
 	"leakcheck/internal/parser"
 )
 
@@ -78,13 +79,18 @@ func (a *Analyzer) analyzeClass(class parser.Class) []parser.Leak {
 		deleted := isVarDeallocated(varName, deallocatedVars, aliasMap)
 
 		if !deleted {
+			deleteOp := "delete"
+			if alloc.IsArray {
+				deleteOp = "delete[]"
+			}
 			leaks = append(leaks, parser.Leak{
-				File:      class.File,
-				Line:      alloc.Line,
-				ClassName: class.Name,
-				VarName:   varName,
-				Reason:    "allocated with 'new' but not deleted in destructor",
-				Severity:  "error",
+				File:           class.File,
+				Line:           alloc.Line,
+				ClassName:      class.Name,
+				VarName:        varName,
+				Reason:         "allocated with 'new' but not deleted in destructor",
+				Severity:       "error",
+				Recommendation: "In destructor ~" + class.Name + "(), add: " + deleteOp + " " + varName + "; // prevents memory leak from line " + fmt.Sprintf("%d", alloc.Line),
 			})
 		} else {
 			// Check for array mismatch
@@ -92,21 +98,23 @@ func (a *Analyzer) analyzeClass(class parser.Class) []parser.Leak {
 			if dealloc != nil {
 				if alloc.IsArray && !dealloc.IsArray {
 					leaks = append(leaks, parser.Leak{
-						File:      class.File,
-						Line:      dealloc.Line,
-						ClassName: class.Name,
-						VarName:   varName,
-						Reason:    "allocated with 'new[]' but deleted with 'delete' instead of 'delete[]'",
-						Severity:  "error",
+						File:           class.File,
+						Line:           dealloc.Line,
+						ClassName:      class.Name,
+						VarName:        varName,
+						Reason:         "allocated with 'new[]' but deleted with 'delete' instead of 'delete[]'",
+						Severity:       "error",
+						Recommendation: fmt.Sprintf("At line %d, change 'delete %s' to 'delete[] %s'. Using delete on array allocations causes undefined behavior.", dealloc.Line, varName, varName),
 					})
 				} else if !alloc.IsArray && dealloc.IsArray {
 					leaks = append(leaks, parser.Leak{
-						File:      class.File,
-						Line:      dealloc.Line,
-						ClassName: class.Name,
-						VarName:   varName,
-						Reason:    "allocated with 'new' but deleted with 'delete[]' instead of 'delete'",
-						Severity:  "warning",
+						File:           class.File,
+						Line:           dealloc.Line,
+						ClassName:      class.Name,
+						VarName:        varName,
+						Reason:         "allocated with 'new' but deleted with 'delete[]' instead of 'delete'",
+						Severity:       "warning",
+						Recommendation: fmt.Sprintf("At line %d, change 'delete[] %s' to 'delete %s'. Single object allocated with 'new' should use 'delete'.", dealloc.Line, varName, varName),
 					})
 				}
 			}
@@ -130,12 +138,13 @@ func (a *Analyzer) analyzeClass(class parser.Class) []parser.Leak {
 					// Check if there's an existing allocation (reassignment without delete)
 					if _, wasAllocatedInCtor := allocatedVars[alloc.VarName]; wasAllocatedInCtor {
 						leaks = append(leaks, parser.Leak{
-							File:      class.File,
-							Line:      alloc.Line,
-							ClassName: class.Name,
-							VarName:   alloc.VarName,
-							Reason:    "pointer reassigned with 'new' without deleting previous allocation (in " + method.Name + ")",
-							Severity:  "warning",
+							File:           class.File,
+							Line:           alloc.Line,
+							ClassName:      class.Name,
+							VarName:        alloc.VarName,
+							Reason:         "pointer reassigned with 'new' without deleting previous allocation (in " + method.Name + ")",
+							Severity:       "warning",
+							Recommendation: fmt.Sprintf("Before line %d in %s::%s(), add: delete %s; // Or consider using std::unique_ptr<%s> for automatic memory management", alloc.Line, class.Name, method.Name, alloc.VarName, "T"),
 						})
 					}
 				}
@@ -160,12 +169,13 @@ func (a *Analyzer) analyzeClass(class parser.Class) []parser.Leak {
 				}
 				if sourceDeleted && targetDeleted {
 					leaks = append(leaks, parser.Leak{
-						File:      class.File,
-						Line:      alias.Line,
-						ClassName: class.Name,
-						VarName:   alias.SourceVar,
-						Reason:    "pointer aliased to '" + alias.TargetVar + "' and both are deleted (potential double-free)",
-						Severity:  "error",
+						File:           class.File,
+						Line:           alias.Line,
+						ClassName:      class.Name,
+						VarName:        alias.SourceVar,
+						Reason:         "pointer aliased to '" + alias.TargetVar + "' and both are deleted (potential double-free)",
+						Severity:       "error",
+						Recommendation: fmt.Sprintf("Double-free detected: '%s' and '%s' point to same memory. Remove one delete, or set '%s = nullptr;' after first delete to prevent crash.", alias.SourceVar, alias.TargetVar, alias.SourceVar),
 					})
 				}
 			}
@@ -176,13 +186,19 @@ func (a *Analyzer) analyzeClass(class parser.Class) []parser.Leak {
 	if class.Destructor == nil {
 		for _, member := range pointerMembers {
 			if _, allocated := allocatedVars[member.Name]; allocated {
+				alloc := allocatedVars[member.Name]
+				deleteOp := "delete"
+				if alloc.IsArray {
+					deleteOp = "delete[]"
+				}
 				leaks = append(leaks, parser.Leak{
-					File:      class.File,
-					Line:      member.Line,
-					ClassName: class.Name,
-					VarName:   member.Name,
-					Reason:    "pointer member allocated but class has no destructor",
-					Severity:  "error",
+					File:           class.File,
+					Line:           member.Line,
+					ClassName:      class.Name,
+					VarName:        member.Name,
+					Reason:         "pointer member allocated but class has no destructor",
+					Severity:       "error",
+					Recommendation: fmt.Sprintf("Add destructor to class %s: ~%s() { %s %s; %s = nullptr; }", class.Name, class.Name, deleteOp, member.Name, member.Name),
 				})
 			}
 		}

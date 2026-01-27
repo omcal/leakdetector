@@ -77,10 +77,11 @@ type PointerAlias struct {
 
 // Leak represents a detected memory leak
 type Leak struct {
-	File      string `json:"file"`
-	Line      int    `json:"line"`
-	ClassName string `json:"class"`
-	VarName   string `json:"variable"`
-	Reason    string `json:"reason"`
-	Severity  string `json:"severity"` // "error", "warning"
+	File           string `json:"file"`
+	Line           int    `json:"line"`
+	ClassName      string `json:"class"`
+	VarName        string `json:"variable"`
+	Reason         string `json:"reason"`
+	Severity       string `json:"severity"`       // "error", "warning"
+	Recommendation string `json:"recommendation"` // How to fix
 }

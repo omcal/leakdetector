@@ -61,6 +61,10 @@ func (r *Reporter) reportConsole(leaks []parser.Leak) error {
 
 		fmt.Fprintf(r.output, "  %s Line %d [%s::%s]: %s\n",
 			icon, leak.Line, leak.ClassName, leak.VarName, leak.Reason)
+
+		if leak.Recommendation != "" {
+			fmt.Fprintf(r.output, "         -> Fix: %s\n", leak.Recommendation)
+		}
 	}
 
 	// Summary
