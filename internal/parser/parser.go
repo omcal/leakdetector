@@ -76,6 +76,14 @@ func (p *Parser) isOutOfClassMethod() bool {
 
 // parseOutOfClassMethod parses ClassName::MethodName() { ... } definitions
 func (p *Parser) parseOutOfClassMethod() {
+	startPos := p.pos
+	defer func() {
+		// Ensure we always make progress to avoid infinite loops
+		if p.pos == startPos {
+			p.advance()
+		}
+	}()
+
 	startLine := p.current().Line
 
 	// Collect tokens until we find ::
